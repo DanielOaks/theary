@@ -29,7 +29,7 @@ import (
 	"io/ioutil"
 	"strings"
 	"encoding/json"
-	"code.google.com/p/go.exp/fsnotify"
+	"gopkg.in/fsnotify.v0"
 	"github.com/gorilla/mux"
 )
 

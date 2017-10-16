@@ -19,23 +19,24 @@ package main
  */
 
 import (
-	"net/http"
-	"fmt"
-	"github.com/gorilla/mux"
-	"github.com/HouzuoGuo/tiedot/db"
 	"encoding/json"
+	"fmt"
+	"net/http"
 	"strconv"
+
+	"github.com/HouzuoGuo/tiedot/db"
+	"github.com/gorilla/mux"
 )
 
 type dataTable struct {
 	//Echo   				int				`json:"sEcho"`
-	TotalRecords		int				`json:"iTotalRecords"`
-	TotalDisplayRecords	int				`json:"iTotalDisplayRecords"`
-	Rows 				[][]string	`json:"aaData"`
+	TotalRecords        int        `json:"iTotalRecords"`
+	TotalDisplayRecords int        `json:"iTotalDisplayRecords"`
+	Rows                [][]string `json:"aaData"`
 }
 
 type EmailTable struct {
-	Cells	[]string	`json:",string"`
+	Cells []string `json:",string"`
 }
 
 // homeView displays a minimalist webmail client  (renders template)
@@ -52,27 +53,28 @@ func listMailsWS(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	recipient := vars["recipient"]
 	emails := dbEmails.Use(recipient)
-	
+
 	var mailRecords dataTable
 	//mailRecords.Echo = 3
-	
+
 	queryStr := `"all"`
 	var query interface{}
 	var record map[string]interface{}
 	json.Unmarshal([]byte(queryStr), &query)
-	queryResult := make(map[uint64]struct{})
+	queryResult := make(map[int]struct{})
 	err := db.EvalQuery(query, emails, &queryResult)
 	checkHttpError(err, w)
-	
+
 	for id := range queryResult {
-		emails.Read(id, &record)
+		record, err = emails.Read(id)
 		mailRecords.TotalRecords++
 		mailRecords.TotalDisplayRecords++
-		row := []string{strconv.FormatUint(id, 10),
-						record["timestamp"].(string),
-						record["from"].(string),
-						record["subject"].(string),
-						record["address"].(string)}
+		//sow := []string{strconv.FormatInt(int64(id), 10),
+		row := []string{strconv.Itoa(id),
+			record["timestamp"].(string),
+			record["from"].(string),
+			record["subject"].(string),
+			record["address"].(string)}
 		//var rowEntry EmailTable
 		//rowEntry.Cells = row
 		mailRecords.Rows = append(mailRecords.Rows, row)
@@ -87,12 +89,13 @@ func getMailWS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	vars := mux.Vars(r)
 	recipient := vars["recipient"]
-	var id uint64
-	id, err := strconv.ParseUint(vars["id"], 10, 64)
+	var id int
+	//id, err := strconv.ParseInt(vars["id"], 10, 64)
+	id, err := strconv.Atoi(vars["id"])
 	checkHttpError(err, w)
 	emails := dbEmails.Use(recipient)
 	var record map[string]interface{}
-	emails.Read(id, &record)
+	record, err = emails.Read(id)
 	encoder := json.NewEncoder(w)
 	err = encoder.Encode(record["data"].(string))
 	checkHttpError(err, w)
@@ -104,6 +107,6 @@ func checkRecipientWS(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	recipient := vars["recipient"]
 	encoder := json.NewEncoder(w)
-    err := encoder.Encode(existsIndB(recipient))
+	err := encoder.Encode(existsIndB(recipient))
 	checkHttpError(err, w)
 }

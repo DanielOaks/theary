@@ -2,7 +2,7 @@ package main
 
 /*
  * This file is part of theary.
- * 
+ *
  * It uses portion of code from Go-Guerrilla SMTPd
  * Copyright (c) 2012 Flashmob, GuerrillaMail.com
  *
@@ -32,31 +32,33 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
 	"github.com/sloonz/go-qprintable"
-	
+
 	//TODO : replace this C binding "github.com/sloonz/go-iconv"
 	// By a pure go solution with go.text
 	//"code.google.com/p/go.text/encoding"
 	//"code.google.com/p/go.text/encoding/charmap"
 	//"code.google.com/p/go.text/transform"
-	
+
 	"io"
 	"io/ioutil"
 	"log"
 	"net"
-	
+
 	"os"
 	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
-	
-	"github.com/HouzuoGuo/tiedot/db"
+
 	randomize "math/rand"
-	"bitbucket.org/kardianos/osext"
-	"bitbucket.org/kardianos/service"
 	"path/filepath"
+
+	"github.com/HouzuoGuo/tiedot/db"
+	"github.com/kardianos/osext"
+	"github.com/kardianos/service"
 )
 
 type Client struct {
@@ -108,18 +110,39 @@ func logln(level int, s string) {
 	}
 }
 
+type program struct{}
+
+func (p *program) Start(s service.Service) error {
+	go p.run()
+	return nil
+}
+func (p *program) run() {
+	//
+	go doWork()
+}
+func (p *program) Stop(s service.Service) error {
+	stopWork()
+	return nil
+}
+
 // main runs the program as a service or as a command line tool.
 // Several verbs allows you to install, start, stop or remove the service.
 // "run" verb allows you to run the program as a command line tool.
 // e.g. "theary install" installs the service
 // e.g. "theary run" starts the program from the console (blocking)
 func main() {
-	s, err := service.NewService(name, displayName, desc)
+	svcConfig := &service.Config{
+		Name:        name,
+		DisplayName: displayName,
+		Description: desc,
+	}
+	prg := &program{}
+	s, err := service.New(prg, svcConfig)
 	if err != nil {
 		fmt.Printf("%s unable to start: %s", displayName, err)
 		return
 	}
-	logSrv = s
+	logSrv, err = s.Logger(nil)
 
 	if len(os.Args) > 1 {
 		var err error
@@ -133,7 +156,7 @@ func main() {
 			}
 			fmt.Printf("Service \"%s\" installed.\n", displayName)
 		case "remove":
-			err = s.Remove()
+			//err = s.Remove()
 			if err != nil {
 				fmt.Printf("Failed to remove: %s\n", err)
 				return
@@ -159,17 +182,9 @@ func main() {
 		}
 		return
 	}
-	err = s.Run(func() error {
-		// start
-		go doWork()
-		return nil
-	}, func() error {
-		// stop
-		stopWork()
-		return nil
-	})
+	err = s.Run()
 	if err != nil {
-		s.Error(err.Error())
+		logSrv.Error(err)
 	}
 }
 
@@ -194,7 +209,7 @@ func configure() {
 			os.MkdirAll(logPath, 0666)
 		}
 	}
-	
+
 	//Set log to logs/theary.log
 	f, err := os.OpenFile(logFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
@@ -254,7 +269,7 @@ func doWork() {
 	//Open database
 	dbEmails, _ = db.OpenDB(dataPath)
 	randomize.Seed(time.Now().UTC().UnixNano())
-	
+
 	//Launch cleaner
 	duration, err := strconv.ParseInt(gConfig["CLEANER_INTERVAL"], 10, 64)
 	interval := time.NewTicker(time.Second * time.Duration(duration))
@@ -276,12 +291,12 @@ func doWork() {
 	//Start watching modification on db folder / start cleo engine
 	BuildIndexes(nil)
 	watchFolderRecipients()
-	
+
 	//Setup the minimalist webmail interface
 	if gConfig["WEBUI_MODE"] != "DISABLED" {
 		go setup_webui()
 	}
-	
+
 	// Start listening for SMTP connections
 	listener, err := net.Listen("tcp", gConfig["GSTMP_LISTEN_INTERFACE"])
 	if err != nil {
@@ -321,7 +336,7 @@ func stopWork() {
 // depending on the execution context (console or service)
 func logInfo(logMessage string, a ...interface{}) {
 	if isService {
-		logSrv.Info(logMessage, a...)
+		logSrv.Info(logMessage)
 	} else {
 		log.Printf(logMessage, a...)
 	}
@@ -331,7 +346,7 @@ func logInfo(logMessage string, a ...interface{}) {
 // depending on the execution context (console or service)
 func logFatal(logMessage string, a ...interface{}) {
 	if isService {
-		logSrv.Error(logMessage, a...)
+		logSrv.Error(logMessage)
 	} else {
 		log.Fatalf(logMessage, a...)
 	}
@@ -377,12 +392,12 @@ func handleClient(client *Client) {
 				if len(input) > 5 {
 					client.Helo = input[5:]
 				}
-				ResponseAdd(client, "250 "+ gConfig["GSMTP_HOST_NAME"] + " Hello ")
+				ResponseAdd(client, "250 "+gConfig["GSMTP_HOST_NAME"]+" Hello ")
 			case strings.Index(cmd, "EHLO") == 0:
 				if len(input) > 5 {
 					client.Helo = input[5:]
 				}
-				ResponseAdd(client, "250-"+gConfig["GSMTP_HOST_NAME"]+ " Hello " + client.Helo+"["+client.Address+"]"+"\r\n"+"250-SIZE "+gConfig["GSMTP_MAX_SIZE"]+"\r\n"+advertiseTls+"250 HELP")
+				ResponseAdd(client, "250-"+gConfig["GSMTP_HOST_NAME"]+" Hello "+client.Helo+"["+client.Address+"]"+"\r\n"+"250-SIZE "+gConfig["GSMTP_MAX_SIZE"]+"\r\n"+advertiseTls+"250 HELP")
 			case strings.Index(cmd, "MAIL FROM:") == 0:
 				if len(input) > 10 {
 					client.Mail_from = input[10:]
@@ -565,15 +580,15 @@ func saveMail() {
 		from := strings.Replace(client.Mail_from, "<", "", -1)
 		from = strings.Replace(from, ">", "", -1)
 		timestamp := time.Now().Format("20060102150405.000000000")
-		
+
 		createIfNotIndB(to)
 		emails := dbEmails.Use(to)
 		_, err := emails.Insert(map[string]interface{}{
 			"timestamp": timestamp,
-			"from":  from,
-			"subject":  client.Subject,
-			"data":  client.Data,
-			"address":  client.Address})
+			"from":      from,
+			"subject":   client.Subject,
+			"data":      client.Data,
+			"address":   client.Address})
 		if err != nil {
 			panic(err)
 		}

@@ -19,26 +19,26 @@ package main
  */
 
 import (
-	"time"
 	"io/ioutil"
-	"strconv"
 	"log"
+	"strconv"
+	"time"
 )
 
 // createIfNotIndB checks if a collection exists or not
 // it will create the collection if it doen't exist
-func createIfNotIndB(collectionName string ) {
+func createIfNotIndB(collectionName string) {
 	if !existsIndB(collectionName) {
-		if err := dbEmails.Create(collectionName, 1); err != nil {
+		if err := dbEmails.Create(collectionName); err != nil {
 			panic(err)
 		}
 	}
 }
 
 // existsIndB checks if a collection exists or not
-func existsIndB(collectionName string ) bool {
+func existsIndB(collectionName string) bool {
 	found := false
-	for name := range dbEmails.StrCol {
+	for _, name := range dbEmails.AllCols() {
 		if name == collectionName {
 			found = true
 			break
